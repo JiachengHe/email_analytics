@@ -10,7 +10,6 @@ import sys
 import pickle
 import multiprocessing as mp
 import numpy as np
-from afinn import Afinn
 
 
 
@@ -39,14 +38,17 @@ def get_id(imap, folder="INBOX", criteria=["ALL"], log_out=False):
 
 
 
-def fetch_email(imap, uid_list, start=None, end=None, fetch_data=["ENVELOPE", "RFC822"], keep_unseen=True, log_out=False):
-    
+def fetch_email(imap, fetch_data, uid_list=None, folder="INBOX", criteria=["ALL"], start=None, end=None, keep_unseen=True, log_out=False):
+
+    if uid_list is None:
+        uid_list = get_id(imap, folder, criteria, log_out=False)
+
     if start is None:
         start = 0
     if end is None:
         end = len(uid_list)
     uid_list = uid_list[start:end]
-    
+
     if keep_unseen:
         flags = imap.get_flags(uid_list)
         unseen_uid = [uid for uid in flags.keys() if SEEN not in flags[uid]]
@@ -59,6 +61,16 @@ def fetch_email(imap, uid_list, start=None, end=None, fetch_data=["ENVELOPE", "R
         resp = imap.logout()
     
     return data
+
+
+
+def fetch_email_from_domains(imap, fetch_data, domain_list, uid_list=None, start=None, end=None, keep_unseen=True, log_out=False):
+
+ 	envelope_data = fetch_email(imap, fetch_data=["ENVELOPE"], uid_list=uid_list, keep_unseen=True, log_out=False)
+ 	target_uid_list = search_domain(envelope_data, domain_list)
+ 	data = fetch_email(imap, fetch_data, target_uid_list, start=start, end=end, keep_unseen=keep_unseen, log_out=log_out)
+
+ 	return data
 
 
 
@@ -123,24 +135,35 @@ def parse_body(raw_message):
 
 
 
-def search_domain(envelope_data, uid, domain_list):
+def search_domain(envelope_data, domain_list):
     
-    if envelope_data[uid]=={}:
-        return False
-    addresses = envelope_data[uid][b"ENVELOPE"].from_
-    if addresses is None:
-        return False
-    bool_list = []
-    for address in addresses:
-        bool_list.append(address.host.decode() in domain_list)
-    return (True in bool_list)
+    uid_list = envelope_data.keys()
+    target_uid_list = []
+
+    for uid in uid_list: 
+    	if envelope_data[uid]=={}:
+    		continue
+    	addresses = envelope_data[uid][b"ENVELOPE"].from_
+    	if addresses is None:
+        	continue
+    	bool_list = []
+
+    	for address in addresses:
+    		if address.host.decode() in domain_list:
+    			target_uid_list.append(uid)
+    			break
+
+    return target_uid_list
 
 
 
-def parse_email(email_data, uid_list):
+def parse_email(email_data, uid_list=None):
     
     email_dict_list = []
     
+    if uid_list==None:
+    	uid_list = list(email_data.keys())
+
     for uid in uid_list:
         envelope = email_data[uid][b"ENVELOPE"]
         raw_message = email_data[uid][b"RFC822"]
@@ -182,8 +205,17 @@ def childprocess_fetch(uid_sublist, folder="INBOX", keep_unseen=True, log_out=Tr
 
 
 
-def mp_fetch(uid_list, num_workers):
+def mp_fetch(num_workers, uid_list=None, domain_list=None):
     
+    if domain_list is not None:
+        imap = connect_imap(host, port, admin_user, admin_pass, user, authenticate, ssl)
+        envelope_data = fetch_email(imap, fetch_data=["ENVELOPE"], uid_list=uid_list, keep_unseen=True, log_out=False)
+        uid_list = search_domain(envelope_data, domain_list)
+
+    if uid_list is None:
+        imap = connect_imap(host, port, admin_user, admin_pass, user, authenticate, ssl)
+        uid_list = get_id(imap, folder="INBOX", criteria=["All"], log_out=False)
+
     num_iter = math.ceil(len(uid_list) / 1000 / num_workers)
     num_partition = num_iter * num_workers
     list_uid_subarrays = np.array_split(uid_list, num_partition)
