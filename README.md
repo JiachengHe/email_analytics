@@ -9,7 +9,7 @@ to install the package.
 
 
 ## Fetching user emails via an admnistrative account
-Suppose a corporate organization is interested to analyze employees' business email exchanges with clients, and gain insights from the daily communication. We could ask the domain adminstrator to set up an adminstrative account with access to those users of interest. Then we can use this package to log into the administrative account, authenticate the employees' user address, and fetch those emails. Only the password of the administrative account is required.
+An organization can set up an adminstrative account with access to users of interest. Then we can use this package to log into the administrative account, authenticate to the user address, and fetch users' emails of interest. Only the password of the administrative account is required.
 
 Below is a sample script to extract all emails from a user's inbox:
 ```python
